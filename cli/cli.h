@@ -26,7 +26,7 @@
 #ifndef CLI_H_
 #define CLI_H_
 
-#include "bsp.h"
+#include "cli_cfg.h"
 #include <string.h>
 
 /* Steps to use the CLI:
@@ -64,7 +64,7 @@ typedef struct
 {
     char *handle;
     char *description;
-    int (*callback)(tCli *p_cli, char*);
+    int (*callback)(char*);
 } tCmd;
 
 extern tCmd commands[]; /* initialized in cli.c, "NULL" terminated */
@@ -72,19 +72,19 @@ extern tCmd commands[]; /* initialized in cli.c, "NULL" terminated */
 int CliInit(tCli*);
 int CliDeinit(tCli*);
 
-int CliRxISR(tCli *p_cli); /* ISR for each char received */
-int CliTxISR(tCli *p_cli); /* ISR for each "ready to send char" */
+int CliRxISR(void); /* ISR for each char received */
+int CliTxISR(void); /* ISR for each "ready to send char" */
 
 char* CliUtoa(unsigned long value, char *str, int base);
 
-void CliSendString(tCli *p_cli, const char *orig); /* Non-blocking send until NULL */
-int CliHandleInput(tCli *p_cli); /* Goes through commands (until "NULL") checking if anything matches */
+void CliSendString(const char *orig); /* Non-blocking send until NULL */
+int CliHandleInput(void); /* Goes through commands (until "NULL") checking if anything matches */
 
-int CliInsertChar(tCli *p_cli, char *str, int position, char character);
+int CliInsertChar(char *str, int position, char character);
 
 // to be implemented
 
-int CliClear(tCli *p_cli);
+int CliClear(void);
 
 #endif /* CLI_H_ */
 

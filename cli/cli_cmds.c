@@ -28,22 +28,22 @@
 #include "cli.h"
 // include any hardware support header you need here...
 
-int Help(tCli *p_cli, char *args)
+int Help(char *args)
 {
     /* Print cmd descriptions */
-    //CliSendString(p_cli, "\n\rHelp yourself! (WIP, will print descriptions)");
+    //CliSendString("\n\rHelp yourself! (WIP, will print descriptions)");
 
     for (unsigned i = 0; commands[i].handle[0]; ++i)
     {
         if (commands[i].handle)
         {
-            CliSendString(p_cli, commands[i].handle);
-            CliSendString(p_cli, " - ");
+            CliSendString(commands[i].handle);
+            CliSendString(" - ");
 
             if (commands[i].description)
             {
-                CliSendString(p_cli, commands[i].description);
-                CliSendString(p_cli, "\r\n");
+                CliSendString(commands[i].description);
+                CliSendString("\r\n");
             }
         }
     }
@@ -51,14 +51,14 @@ int Help(tCli *p_cli, char *args)
     return 0;
 }
 
-int SayHello(tCli *p_cli, char *args)
+int SayHello(char *args)
 {
-    CliSendString(p_cli, "Hello World!");
+    CliSendString("Hello World!");
     
     return 0;
 }
 
-int ReadAddr(tCli *p_cli, char *args)
+int ReadAddr(char *args)
 {
     unsigned long *addr = 0;
     unsigned long value = 0;
@@ -71,9 +71,9 @@ int ReadAddr(tCli *p_cli, char *args)
     
     CliUtoa(addr, addr_str, 16);
     
-    CliSendString(p_cli, "read 0x");
-    CliSendString(p_cli, addr_str);
-    CliSendString(p_cli, ": ");
+    CliSendString("read 0x");
+    CliSendString(addr_str);
+    CliSendString(": ");
     
     if (addr)
     {
@@ -81,17 +81,17 @@ int ReadAddr(tCli *p_cli, char *args)
         
         CliUtoa(value, value_str, 16);
         
-        CliSendString(p_cli, "0x");
-        CliSendString(p_cli, value_str);
+        CliSendString("0x");
+        CliSendString(value_str);
     }
     
     return 0;
 }
 
-int WriteAddr(tCli *p_cli, char *args)
+int WriteAddr(char *args)
 {
-    CliSendString(p_cli, "write: ");
-    CliSendString(p_cli, args);
+    CliSendString("write: ");
+    CliSendString(args);
     
     return 0;
 }
