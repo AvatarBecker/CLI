@@ -32,19 +32,39 @@ const char prompt[] = "\r> ";  // update LEN_PROMPT as well
 
 char white_spaces[LEN_STD_STR + LEN_PROMPT] = { 0 };
 
-int CliInit(tCli *p_cli)
+tCli *p_cli;    // passed by application, which must have allocated it
+
+int CliInit(tCli *p_cli_arg)
 {
+    p_cli = p_cli_arg;
+
     p_cli->idx = 0;
     p_cli->was_input_received = 0;
+
+    p_cli->rx_reg_addr = RX_REG_ADDR;
+    p_cli->tx_reg_addr = TX_REG_ADDR;
+
+    p_cli->EnableUartInt = CliEnableUartInt;
+    p_cli->DisableUartInt = CliDisableUartInt;
+
+    CliInitUart();
 
     memset(p_cli->output_buffer, 0, NUM_OUT_MSG_QUEUE*sizeof(char*));
 
     memset(white_spaces, ' ', LEN_STD_STR + LEN_PROMPT);
     white_spaces[LEN_STD_STR + LEN_PROMPT - 1] = 0;
 
-    CliSendString(p_cli, prompt);
+    CliSendString(prompt);
 
     return 0;
+}
+
+void CliPeriodicCheck()
+{
+    if(p_cli->was_input_received)
+    {
+        CliHandleInput();
+    }
 }
 
 char* CliUtoa(unsigned long value, char *str, int base)
@@ -86,7 +106,7 @@ char* CliUtoa(unsigned long value, char *str, int base)
     return str;
 }
 
-int CliRxISR(tCli *p_cli)    // ISR for each char received
+int CliRxISR()    // ISR for each char received
 {
     int retval = 0;
     char rec_char = 0;
@@ -128,19 +148,19 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
             {
                 p_cli->input_buffer[p_cli->in_buff_idx][0] = 0;
                 p_cli->idx = 0;
-                CliSendString(p_cli, "\r\n");
-                CliSendString(p_cli, prompt);
-                //CliSendString(p_cli, "\r\n> ");
+                CliSendString("\r\n");
+                CliSendString(prompt);
+                //CliSendString("\r\n> ");
             }
             break;
         case '\b':
         case 127:
-            retval = CliInsertChar(p_cli, p_cli->input_buffer[p_cli->in_buff_idx], p_cli->idx, '\b');
-            //int retval = CliInsertChar(p_cli, p_cli->input_buffer[p_cli->in_buff_idx], p_cli->idx, 127);
+            retval = CliInsertChar(p_cli->input_buffer[p_cli->in_buff_idx], p_cli->idx, '\b');
+            //int retval = CliInsertChar(p_cli->input_buffer[p_cli->in_buff_idx], p_cli->idx, 127);
 
             if (retval)
             {
-                CliSendString(p_cli, "\a");
+                CliSendString("\a");
             }
             else
             {
@@ -152,7 +172,7 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
             {
                 p_cli->input_buffer[p_cli->in_buff_idx][LEN_STD_STR - 1] = 0;
 
-                CliSendString(p_cli, "\a");
+                CliSendString("\a");
                 return 0;
             }
 
@@ -171,7 +191,7 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
 #ifdef DEBUG
                         eb_idx = 0;
 #endif
-                        retval = CliInsertChar(p_cli, p_cli->input_buffer[p_cli->in_buff_idx], p_cli->idx, rec_char);
+                        retval = CliInsertChar(p_cli->input_buffer[p_cli->in_buff_idx], p_cli->idx, rec_char);
 
                         if (!retval)
                         {
@@ -197,7 +217,7 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
                         esc_state = eNO_ESC_SEQ;
                         eb_idx = 0;
 
-                        CliSendString(p_cli, "\a");
+                        CliSendString("\a");
                     }
                     break;
                 case eO_RECVD:
@@ -238,16 +258,16 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
                             {
                                 history_buff_idx = 0;
                             }
-                            CliSendString(p_cli, "\a");
+                            CliSendString("\a");
                         }
 
-                        CliClear(p_cli);
+                        CliClear();
 
                         // copy buffer to curr_buff, update idx, restore in_buff_idx
                         strcpy(p_cli->input_buffer[p_cli->in_buff_idx], p_cli->input_buffer[history_buff_idx]);
                         p_cli->idx = strlen(p_cli->input_buffer[history_buff_idx]);
 
-                        CliSendString(p_cli, p_cli->input_buffer[p_cli->in_buff_idx]);
+                        CliSendString(p_cli->input_buffer[p_cli->in_buff_idx]);
 
                     }
                     else if (rec_char == 'b' || rec_char == 'B') /* down */
@@ -264,11 +284,11 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
                         }
                         else
                         {
-                            CliSendString(p_cli, "\a"); // bonk
+                            CliSendString("\a"); // bonk
                             //break;
                         }
 
-                        CliClear(p_cli);
+                        CliClear();
 
                         if (history_buff_idx == p_cli->in_buff_idx && prev_history_buff_idx != history_buff_idx)
                         {
@@ -283,35 +303,35 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
                         }
 
                         p_cli->idx = strlen(p_cli->input_buffer[p_cli->in_buff_idx]);
-                        CliSendString(p_cli, p_cli->input_buffer[p_cli->in_buff_idx]);
+                        CliSendString(p_cli->input_buffer[p_cli->in_buff_idx]);
 
                     }
                     else if (rec_char == 'c' || rec_char == 'C') /* right */
                     {
-                        /*CliSendString(p_cli, "right");*/
+                        /*CliSendString("right");*/
 
                         if (p_cli->idx < strlen(p_cli->input_buffer[p_cli->in_buff_idx]))
                         {
                             p_cli->idx++;
-                            CliSendString(p_cli, "\e[C");
+                            CliSendString("\e[C");
                         }
                         else
                         {
-                            CliSendString(p_cli, "\a");
+                            CliSendString("\a");
                         }
                     }
                     else if (rec_char == 'd' || rec_char == 'D') /* left */
                     {
-                        /*CliSendString(p_cli, "left");*/
+                        /*CliSendString("left");*/
 
                         if (p_cli->idx)
                         {
                             p_cli->idx--;
-                            CliSendString(p_cli, "\e[D");
+                            CliSendString("\e[D");
                         }
                         else
                         {
-                            CliSendString(p_cli, "\a");
+                            CliSendString("\a");
                         }
                     }
                     else if (rec_char == 'h' || rec_char == 'H') /* home */
@@ -320,9 +340,9 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
 
                         CliUtoa(LEN_PROMPT, str_buffer, 10);
 
-                        CliSendString(p_cli, "\r\e[");
-                        CliSendString(p_cli, str_buffer);
-                        CliSendString(p_cli, "C");
+                        CliSendString("\r\e[");
+                        CliSendString(str_buffer);
+                        CliSendString("C");
                     }
                     else if (rec_char == 'f' || rec_char == 'F') /* end */
                     {
@@ -330,9 +350,9 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
 
                         CliUtoa(LEN_PROMPT + p_cli->idx, str_buffer, 10);
 
-                        CliSendString(p_cli, "\r\e[");
-                        CliSendString(p_cli, str_buffer);
-                        CliSendString(p_cli, "C");
+                        CliSendString("\r\e[");
+                        CliSendString(str_buffer);
+                        CliSendString("C");
                     }
 
                     esc_state = eNO_ESC_SEQ;
@@ -360,17 +380,17 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
 
                             CliUtoa(LEN_PROMPT, str_buffer, 10);
 
-                            CliSendString(p_cli, "\r\e[");
-                            CliSendString(p_cli, str_buffer);
-                            CliSendString(p_cli, "C");
+                            CliSendString("\r\e[");
+                            CliSendString(str_buffer);
+                            CliSendString("C");
 
                             break;
                         case 3: // delete (not DEL)
-                            retval = CliInsertChar(p_cli, p_cli->input_buffer[p_cli->in_buff_idx], p_cli->idx, 127);
+                            retval = CliInsertChar(p_cli->input_buffer[p_cli->in_buff_idx], p_cli->idx, 127);
 
                             if (retval)
                             {
-                                CliSendString(p_cli, "\a");
+                                CliSendString("\a");
                             }
                             break;
                         case 4:  // end (VT102)
@@ -378,9 +398,9 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
 
                             CliUtoa(LEN_PROMPT + p_cli->idx, str_buffer, 10);
 
-                            CliSendString(p_cli, "\r\e[");
-                            CliSendString(p_cli, str_buffer);
-                            CliSendString(p_cli, "C");
+                            CliSendString("\r\e[");
+                            CliSendString(str_buffer);
+                            CliSendString("C");
 
                             break;
                         default:
@@ -402,7 +422,7 @@ int CliRxISR(tCli *p_cli)    // ISR for each char received
     return 0;
 }
 
-int CliTxISR(tCli *p_cli)    // ISR for each "ready to send char"
+int CliTxISR()    // ISR for each "ready to send char"
 {
     static unsigned char_idx = 0;
     static unsigned buffer_idx = 0;
@@ -445,7 +465,7 @@ int CliTxISR(tCli *p_cli)    // ISR for each "ready to send char"
     return 0;
 }
 
-int CliInsertChar(tCli *p_cli, char *str, int position, char character)
+int CliInsertChar(char *str, int position, char character)
 {
     int len_str = strlen(str);
     int len_rem = len_str - position;
@@ -463,22 +483,22 @@ int CliInsertChar(tCli *p_cli, char *str, int position, char character)
             {
                 memmove(&str[position - 1], &str[position], len_rem + 1); // copy also \0
 
-                CliSendString(p_cli, "\e[D");
-                CliSendString(p_cli, &str[position - 1]);
-                CliSendString(p_cli, " ");
+                CliSendString("\e[D");
+                CliSendString(&str[position - 1]);
+                CliSendString(" ");
                 //get back the amount of characters printed over:
                 // get back len-idx
 
                 CliUtoa(len_rem + 1, num_rem_chars_str, 10);
 
-                CliSendString(p_cli, "\e[");
-                CliSendString(p_cli, num_rem_chars_str);
-                CliSendString(p_cli, "D");
+                CliSendString("\e[");
+                CliSendString(num_rem_chars_str);
+                CliSendString("D");
             }
             else
             {
                 str[position - 1] = 0;
-                CliSendString(p_cli, "\b \b");
+                CliSendString("\b \b");
             }
 
             break;
@@ -488,16 +508,16 @@ int CliInsertChar(tCli *p_cli, char *str, int position, char character)
             {
                 memmove(&str[position], &str[position + 1], len_rem); // copy also \0
 
-                CliSendString(p_cli, &str[position]);
-                CliSendString(p_cli, " ");
+                CliSendString(&str[position]);
+                CliSendString(" ");
                 //get back the amount of characters printed over:
                 // get back len-idx
 
                 CliUtoa(len_rem, num_rem_chars_str, 10);
 
-                CliSendString(p_cli, "\e[");
-                CliSendString(p_cli, num_rem_chars_str);
-                CliSendString(p_cli, "D");
+                CliSendString("\e[");
+                CliSendString(num_rem_chars_str);
+                CliSendString("D");
             }
             else
             {
@@ -516,21 +536,21 @@ int CliInsertChar(tCli *p_cli, char *str, int position, char character)
                 memmove(&str[position + 1], &str[position], len_rem + 1); // copy also \0
                 str[position] = character;
 
-                CliSendString(p_cli, &str[position]);
+                CliSendString(&str[position]);
 
                 // move cursor back the amount of characters printed over:
                 CliUtoa(len_rem, num_rem_chars_str, 10);
 
-                CliSendString(p_cli, "\e[");
-                CliSendString(p_cli, num_rem_chars_str);
-                CliSendString(p_cli, "D");
+                CliSendString("\e[");
+                CliSendString(num_rem_chars_str);
+                CliSendString("D");
             }
             else if (position == len_str)
             {
                 str[position] = character;
                 str[position + 1] = 0;
 
-                CliSendString(p_cli, &str[position]);
+                CliSendString(&str[position]);
             }
             break;
     }
@@ -538,14 +558,14 @@ int CliInsertChar(tCli *p_cli, char *str, int position, char character)
     return 0;
 }
 
-int CliClear(tCli *p_cli)
+int CliClear()
 {
-    CliSendString(p_cli, "\r");
-    CliSendString(p_cli, white_spaces);
-    CliSendString(p_cli, prompt);
+    CliSendString("\r");
+    CliSendString(white_spaces);
+    CliSendString(prompt);
 }
 
-void CliSendString(tCli *p_cli, const char *orig)
+void CliSendString(const char *orig)
 {
     for (unsigned i = 0; i < NUM_OUT_MSG_QUEUE; ++i)
     {
@@ -558,7 +578,7 @@ void CliSendString(tCli *p_cli, const char *orig)
     p_cli->EnableUartInt();
 }
 
-int CliHandleInput(tCli *p_cli)
+int CliHandleInput()
 {
     static char temp_buffer[LEN_STD_STR] = { 0 };
 
@@ -575,8 +595,8 @@ int CliHandleInput(tCli *p_cli)
                 token = strtok(NULL, "");
                 if(commands[i].callback)
                 {
-                    CliSendString(p_cli, "\r\n");
-                    commands[i].callback(p_cli, token);
+                    CliSendString("\r\n");
+                    commands[i].callback(token);
                 }
             }
         }
@@ -591,13 +611,12 @@ int CliHandleInput(tCli *p_cli)
     }
 
     /* prepare the CLI */
-    CliSendString(p_cli, "\r\n");
-    CliSendString(p_cli, prompt);
+    CliSendString("\r\n");
+    CliSendString(prompt);
 
     p_cli->idx = 0;
     p_cli->was_input_received = 0;
 
     return 0;
 }
-
 
